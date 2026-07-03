@@ -49,14 +49,14 @@ python3 skills/codex-session-delete/scripts/codex-session-delete restore <backup
 ### 5. 批量删除项目会话
 
 ```bash
-# 预览“材料”项目相关会话
-python3 skills/codex-session-delete/scripts/codex-session-delete bulk-delete "材料" --dry-run
+# 预览“<项目名>”项目相关会话
+python3 skills/codex-session-delete/scripts/codex-session-delete bulk-delete "<项目名>" --dry-run
 
 # 执行删除
-python3 skills/codex-session-delete/scripts/codex-session-delete bulk-delete "材料"
+python3 skills/codex-session-delete/scripts/codex-session-delete bulk-delete "<项目名>"
 
 # 跳过指定会话
-python3 skills/codex-session-delete/scripts/codex-session-delete bulk-delete "材料" --skip <session_id>
+python3 skills/codex-session-delete/scripts/codex-session-delete bulk-delete "<项目名>" --skip <session_id>
 ```
 
 ## 自定义备份目录
