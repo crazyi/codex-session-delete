@@ -187,6 +187,97 @@ def cmd_delete(args):
     print(f"backup_path={backup_file}")
 
 
+
+def _match_sessions(state_dbs, memories_db, query):
+    seen = set()
+    results = []
+    pattern = f"%{query}%"
+    for state_db in state_dbs:
+        conn = sqlite3.connect(str(state_db))
+        try:
+            rows = conn.execute(
+                """SELECT id, title, cwd, rollout_path
+                   FROM threads
+                   WHERE LOWER(cwd) LIKE LOWER(?)
+                      OR LOWER(rollout_path) LIKE LOWER(?)""",
+                (pattern, pattern),
+            ).fetchall()
+            for row in rows:
+                sid = row[0]
+                if sid not in seen:
+                    seen.add(sid)
+                    results.append({
+                        "id": sid,
+                        "title": row[1],
+                        "cwd": row[2],
+                        "rollout_path": row[3],
+                        "source": state_db.name,
+                    })
+        finally:
+            conn.close()
+    return results
+
+
+def cmd_bulk_delete(args):
+    state_dbs = find_state_dbs(DEFAULT_STATE_DB_CANDIDATES)
+    memories_db = DEFAULT_MEMORIES_DB if DEFAULT_MEMORIES_DB.exists() else None
+    backup_dir = Path(args.backup_dir)
+    skip_ids = set(args.skip or [])
+    query = args.query
+
+    print(f"[*] Matching sessions for: {query}")
+    matches = _match_sessions(state_dbs, memories_db, query)
+    if not matches:
+        print("No matching sessions found.")
+        return
+
+    actionable = [m for m in matches if m["id"] not in skip_ids]
+    skipped = [m for m in matches if m["id"] in skip_ids]
+
+    for m in skipped:
+        print(f"  SKIP {m['id']} | {m['title']} | source={m['source']}")
+
+    print(f"\n[*] {len(actionable)} session(s) to delete, {len(skipped)} skipped.")
+
+    if args.dry_run:
+        print("\nMatching sessions (dry-run):")
+        for m in actionable:
+            print(f"  {m['id']} | {m['title']} | cwd={m.get('cwd')} | source={m['source']}")
+        return
+
+    print("\nSessions to delete:")
+    for m in actionable:
+        print(f"  {m['id']} | {m['title']} | cwd={m.get('cwd')} | source={m['source']}")
+
+    confirm = input(f"\nDelete {len(actionable)} sessions? [y/N] ").strip().lower()
+    if confirm != "y":
+        print("Cancelled.")
+        return
+
+    tokens = []
+    errors = []
+    for i, m in enumerate(actionable, 1):
+        sid = m["id"]
+        print(f"\n[{i}/{len(actionable)}] Deleting {sid} ...")
+        try:
+            import types
+            cmd_delete(types.SimpleNamespace(
+                session_id=sid,
+                backup_dir=str(backup_dir),
+                undo_token=None,
+            ))
+            tokens.append(sid)
+        except SystemExit:
+            errors.append(sid)
+
+    print("\n" + "=" * 50)
+    print(f"Bulk delete complete.")
+    print(f"  Deleted: {len(tokens) - len(errors)}/{len(actionable)}")
+    if errors:
+        print(f"  Failed:  {errors}")
+    print(f"  Backups: {backup_dir}")
+
+
 def cmd_restore(args):
     backup_file = Path(args.backup_path)
     if not backup_file.exists():
@@ -334,6 +425,12 @@ def main():
     p_verify = sub.add_parser("verify", help="Verify session exists")
     p_verify.add_argument("session_id", help="Session ID to verify")
 
+    p_bulk = sub.add_parser("bulk-delete", help="Bulk delete sessions by project query")
+    p_bulk.add_argument("query", help="Project/cwd/path substring to match")
+    p_bulk.add_argument("--backup-dir", default=str(DEFAULT_BACKUP_DIR), help="Backup directory")
+    p_bulk.add_argument("--skip", action="append", default=[], help="Session IDs to skip")
+    p_bulk.add_argument("--dry-run", action="store_true", help="Preview matches without deleting")
+
     args = parser.parse_args()
     if args.command == "delete":
         cmd_delete(args)
@@ -345,6 +442,8 @@ def main():
         cmd_list(args)
     elif args.command == "verify":
         cmd_verify(args)
+    elif args.command == "bulk-delete":
+        cmd_bulk_delete(args)
     else:
         parser.print_help()
         raise SystemExit(1)
