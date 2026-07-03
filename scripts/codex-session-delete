@@ -1,0 +1,354 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import sqlite3
+import sys
+from pathlib import Path
+
+DEFAULT_STATE_DB_CANDIDATES = [
+    Path.home() / ".codex" / "sqlite" / "state_5.sqlite",
+    Path.home() / ".codex" / "state_5.sqlite",
+]
+DEFAULT_MEMORIES_DB = Path.home() / ".codex" / "sqlite" / "memories_1.sqlite"
+DEFAULT_BACKUP_DIR = Path.home() / ".codex-session-delete" / "backups"
+
+
+def now_iso():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def select_rows(conn, table, where, params):
+    cur = conn.execute(f"SELECT * FROM {table} WHERE {where}", params)
+    cols = [d[0] for d in cur.description]
+    rows = []
+    for row in cur.fetchall():
+        rows.append(dict(zip(cols, row)))
+    return rows
+
+
+def insert_rows(conn, table, rows):
+    if not rows:
+        return
+    cols = list(rows[0].keys())
+    placeholders = ", ".join(["?"] * len(cols))
+    col_names = ", ".join(cols)
+    sql = f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})"
+    for row in rows:
+        vals = [row[c] for c in cols]
+        conn.execute(sql, vals)
+
+
+def find_state_dbs(candidates):
+    return [p for p in candidates if p.exists()]
+
+
+def cmd_delete(args):
+    session_id = args.session_id
+    state_dbs = find_state_dbs(DEFAULT_STATE_DB_CANDIDATES)
+    memories_db = DEFAULT_MEMORIES_DB if DEFAULT_MEMORIES_DB.exists() else None
+    backup_dir = Path(args.backup_dir)
+
+    print(f"[1/5] State DBs: {state_dbs}")
+    if memories_db:
+        print(f"     Memories DB: {memories_db}")
+
+    all_thread_rows = []
+    all_tool_rows = []
+    all_edge_rows = []
+    all_job_rows = []
+    all_stage_rows = []
+    rollout_path = None
+
+    for state_db in state_dbs:
+        state_conn = sqlite3.connect(str(state_db))
+        state_conn.row_factory = sqlite3.Row
+        try:
+            thread_rows = select_rows(state_conn, "threads", "id = ?", (session_id,))
+            if thread_rows:
+                all_thread_rows.extend(thread_rows)
+                rollout_path = thread_rows[0].get("rollout_path")
+                all_tool_rows.extend(select_rows(state_conn, "thread_dynamic_tools", "thread_id = ?", (session_id,)))
+                all_edge_rows.extend(select_rows(
+                    state_conn,
+                    "thread_spawn_edges",
+                    "parent_thread_id = ? OR child_thread_id = ?",
+                    (session_id, session_id),
+                ))
+                all_job_rows.extend(select_rows(state_conn, "agent_job_items", "assigned_thread_id = ?", (session_id,)))
+        finally:
+            state_conn.close()
+
+    if memories_db:
+        memories_conn = sqlite3.connect(str(memories_db))
+        memories_conn.row_factory = sqlite3.Row
+        try:
+            all_stage_rows = select_rows(memories_conn, "stage1_outputs", "thread_id = ?", (session_id,))
+        finally:
+            memories_conn.close()
+
+    if not all_thread_rows:
+        print(f"Session {session_id} not found in threads.")
+        raise SystemExit(1)
+
+    thread = all_thread_rows[0]
+    print(f"[2/5] Found thread: {thread.get('title')} (cwd={thread.get('cwd')})")
+
+    rollout_backup = None
+    rollout_path_obj = Path(rollout_path) if rollout_path else None
+    if rollout_path_obj and rollout_path_obj.exists():
+        try:
+            rollout_backup = rollout_path_obj.read_text(encoding="utf-8")
+        except Exception as exc:
+            print(f"Warning: failed to read rollout file: {exc}")
+
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    token = args.undo_token or __import__("uuid").uuid4().hex
+    backup_file = backup_dir / f"{token}.json"
+    backup = {
+        "session_id": session_id,
+        "created_at": now_iso(),
+        "tables": {
+            "threads": all_thread_rows,
+            "thread_dynamic_tools": all_tool_rows,
+            "thread_spawn_edges": all_edge_rows,
+            "agent_job_items": all_job_rows,
+            "stage1_outputs": all_stage_rows,
+        },
+    }
+    if rollout_backup is not None:
+        backup.setdefault("__files", []).append({
+            "path": str(rollout_path_obj),
+            "content": rollout_backup,
+        })
+    backup_file.write_text(json.dumps(backup, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"[3/5] Backup saved: {backup_file}")
+
+    print("[4/5] Deleting session...")
+    state_conns = []
+    try:
+        for state_db in state_dbs:
+            state_conn = sqlite3.connect(str(state_db))
+            state_conn.row_factory = sqlite3.Row
+            state_conns.append(state_conn)
+            state_conn.execute("BEGIN")
+            state_conn.execute("DELETE FROM thread_dynamic_tools WHERE thread_id = ?", (session_id,))
+            state_conn.execute(
+                "DELETE FROM thread_spawn_edges WHERE parent_thread_id = ? OR child_thread_id = ?",
+                (session_id, session_id),
+            )
+            state_conn.execute(
+                "UPDATE agent_job_items SET assigned_thread_id = NULL WHERE assigned_thread_id = ?",
+                (session_id,),
+            )
+            state_conn.execute("DELETE FROM threads WHERE id = ?", (session_id,))
+    except Exception as exc:
+        for conn in state_conns:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        print(f"Delete failed: {exc}")
+        raise SystemExit(1) from exc
+
+    for conn in state_conns:
+        try:
+            conn.commit()
+        except Exception as exc:
+            print(f"State DB commit failed: {exc}")
+            raise SystemExit(1) from exc
+        finally:
+            conn.close()
+
+    if memories_db:
+        memories_conn = sqlite3.connect(str(memories_db))
+        memories_conn.row_factory = sqlite3.Row
+        try:
+            memories_conn.execute("BEGIN")
+            memories_conn.execute("DELETE FROM stage1_outputs WHERE thread_id = ?", (session_id,))
+            memories_conn.commit()
+        except Exception as exc:
+            memories_conn.rollback()
+            print(f"Memories delete failed: {exc}")
+        finally:
+            memories_conn.close()
+
+    if rollout_path_obj and rollout_path_obj.exists():
+        try:
+            rollout_path_obj.unlink()
+        except FileNotFoundError:
+            pass
+        except Exception as exc:
+            print(f"Warning: rollout file delete failed: {exc}")
+
+    print("[5/5] Done.")
+    print(f"session_id={session_id}")
+    print(f"undo_token={token}")
+    print(f"backup_path={backup_file}")
+
+
+def cmd_restore(args):
+    backup_file = Path(args.backup_path)
+    if not backup_file.exists():
+        print(f"Backup not found: {backup_file}")
+        raise SystemExit(1)
+
+    backup = json.loads(backup_file.read_text(encoding="utf-8"))
+    session_id = backup.get("session_id", "")
+    tables = backup.get("tables", {})
+
+    state_dbs = find_state_dbs(DEFAULT_STATE_DB_CANDIDATES)
+    memories_db = DEFAULT_MEMORIES_DB if DEFAULT_MEMORIES_DB.exists() else None
+
+    state_conns = []
+    try:
+        for state_db in state_dbs:
+            conn = sqlite3.connect(str(state_db))
+            conn.row_factory = sqlite3.Row
+            state_conns.append(conn)
+            conn.execute("BEGIN")
+            for table in ["thread_dynamic_tools", "thread_spawn_edges", "agent_job_items", "threads"]:
+                rows = tables.get(table, [])
+                if not rows:
+                    continue
+                cols = list(rows[0].keys())
+                placeholders = ", ".join(["?"] * len(cols))
+                col_names = ", ".join(cols)
+                sql = f"INSERT OR IGNORE INTO {table} ({col_names}) VALUES ({placeholders})"
+                for row in rows:
+                    vals = [row[c] for c in cols]
+                    conn.execute(sql, vals)
+        for conn in state_conns:
+            conn.commit()
+
+        if memories_db:
+            memories_conn = sqlite3.connect(str(memories_db))
+            memories_conn.row_factory = sqlite3.Row
+            try:
+                memories_conn.execute("BEGIN")
+                rows = tables.get("stage1_outputs", [])
+                if rows:
+                    cols = list(rows[0].keys())
+                    placeholders = ", ".join(["?"] * len(cols))
+                    col_names = ", ".join(cols)
+                    sql = f"INSERT OR IGNORE INTO stage1_outputs ({col_names}) VALUES ({placeholders})"
+                    for row in rows:
+                        vals = [row[c] for c in cols]
+                        memories_conn.execute(sql, vals)
+                memories_conn.commit()
+            finally:
+                memories_conn.close()
+
+        files = backup.get("__files", [])
+        for file_entry in files:
+            path = Path(file_entry.get("path", ""))
+            content = file_entry.get("content")
+            if path and content is not None:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8")
+
+        print(f"Restored session {session_id} from {backup_file}")
+    except Exception as exc:
+        for conn in state_conns:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        print(f"Restore failed: {exc}")
+        raise SystemExit(1) from exc
+    finally:
+        for conn in state_conns:
+            conn.close()
+
+
+def cmd_undo(args):
+    backup_dir = Path(args.backup_dir)
+    backup_file = backup_dir / f"{args.undo_token}.json"
+    if not backup_file.exists():
+        print(f"Backup not found: {backup_file}")
+        raise SystemExit(1)
+    args.backup_path = str(backup_file)
+    cmd_restore(args)
+
+
+def cmd_list(args):
+    backup_dir = Path(args.backup_dir)
+    if not backup_dir.exists():
+        print(f"No backups at {backup_dir}")
+        return
+    files = sorted(backup_dir.glob("*.json"))
+    if not files:
+        print("No backups found.")
+        return
+    print(f"Backups in {backup_dir}:")
+    for f in files:
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            sid = data.get("session_id", "?")
+            created = data.get("created_at", "?")
+            print(f"- {f.name} | session_id={sid} | created_at={created}")
+        except Exception:
+            print(f"- {f.name} | <invalid backup>")
+
+
+def cmd_verify(args):
+    state_dbs = find_state_dbs(DEFAULT_STATE_DB_CANDIDATES)
+    found = False
+    for state_db in state_dbs:
+        conn = sqlite3.connect(str(state_db))
+        try:
+            row = conn.execute(
+                "SELECT id, title, cwd FROM threads WHERE id = ? LIMIT 1",
+                (args.session_id,),
+            ).fetchone()
+            if row:
+                print(f"EXISTS id={row[0]} title={row[1]} cwd={row[2]} db={state_db}")
+                found = True
+        finally:
+            conn.close()
+    if not found:
+        print(f"NOT_FOUND session_id={args.session_id}")
+        raise SystemExit(1)
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="codex-session-delete")
+    sub = parser.add_subparsers(dest="command")
+
+    p_delete = sub.add_parser("delete", help="Delete a session")
+    p_delete.add_argument("session_id", help="Session ID to delete")
+    p_delete.add_argument("--backup-dir", default=str(DEFAULT_BACKUP_DIR), help="Backup directory")
+    p_delete.add_argument("--undo-token", default=None, help="Reuse an existing undo token")
+
+    p_restore = sub.add_parser("restore", help="Restore from backup path")
+    p_restore.add_argument("backup_path", help="Backup file path")
+    p_restore.add_argument("--backup-dir", default=str(DEFAULT_BACKUP_DIR), help="Backup directory")
+
+    p_undo = sub.add_parser("undo", help="Undo delete by undo token")
+    p_undo.add_argument("undo_token", help="Undo token from delete output")
+    p_undo.add_argument("--backup-dir", default=str(DEFAULT_BACKUP_DIR), help="Backup directory")
+
+    p_list = sub.add_parser("list", help="List backups")
+    p_list.add_argument("--backup-dir", default=str(DEFAULT_BACKUP_DIR), help="Backup directory")
+
+    p_verify = sub.add_parser("verify", help="Verify session exists")
+    p_verify.add_argument("session_id", help="Session ID to verify")
+
+    args = parser.parse_args()
+    if args.command == "delete":
+        cmd_delete(args)
+    elif args.command == "restore":
+        cmd_restore(args)
+    elif args.command == "undo":
+        cmd_undo(args)
+    elif args.command == "list":
+        cmd_list(args)
+    elif args.command == "verify":
+        cmd_verify(args)
+    else:
+        parser.print_help()
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()
