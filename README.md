@@ -1,6 +1,6 @@
 # codex-session-delete
 
-删除 Codex 会话，并生成可撤销备份。支持删除、恢复、撤销和备份列表查看。
+删除 Codex 会话，并生成可撤销备份。支持删除、恢复、撤销、备份列表查看和按项目批量删除。
 
 ## 适用场景
 
@@ -8,9 +8,66 @@
 - 你想保留可恢复的备份，避免误删。
 - 你希望用统一 CLI 处理多库场景。
 
+## 安装
+
+### 方式 1：通过 Codex marketplace 安装（推荐）
+
+本仓库本身是一个 Codex 插件，可通过个人 marketplace 安装：
+
+```bash
+# 1. 把本仓库 clone 到本地（路径可自定义，本文档以 ~/Desktop/1111/codex-session-delete 为例）
+git clone https://github.com/crazyi/codex-session-delete.git ~/Desktop/1111/codex-session-delete
+
+# 2. 把 marketplace 入口写到默认位置（首次安装时执行一次即可）
+mkdir -p ~/.agents/plugins
+# 写入 marketplace.json，详见后文「marketplace.json 示例」
+
+# 3. 安装插件
+codex plugin add codex-session-delete@personal
+```
+
+`personal` 是默认 marketplace 名称，由 `~/.agents/plugins/marketplace.json` 隐式发现，不需要额外 `codex plugin marketplace add`。
+
+安装后启动一个新会话，Codex 就会识别 `codex-session-delete` skill。
+
+### 方式 2：手动安装为个人 skill
+
+```bash
+git clone https://github.com/crazyi/codex-session-delete.git \
+  "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete"
+```
+
+## marketplace.json 示例
+
+```json
+{
+  "name": "personal",
+  "interface": {
+    "displayName": "Personal"
+  },
+  "plugins": [
+    {
+      "name": "codex-session-delete",
+      "source": {
+        "source": "local",
+        "path": "/Users/crazyi/Desktop/1111/codex-session-delete"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
+```
+
+> `source.path` 必须指向本仓库的绝对路径。如果仓库移动，需要同步更新此处。
+
 ## 快速开始
 
 > `$CODEX_HOME` 未设置时回退到 `~/.codex`，假设 skill 安装在标准位置。
+> 插件安装与手动安装都会让脚本暴露在 `~/.codex/skills/codex-session-delete/scripts/codex-session-delete`。
 
 ```bash
 python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" --help

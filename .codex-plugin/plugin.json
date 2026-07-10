@@ -1,0 +1,23 @@
+{
+  "name": "codex-session-delete",
+  "version": "0.1.0",
+  "description": "Delete Codex sessions with undoable backups, restore, list, and bulk-delete by project.",
+  "author": {
+    "name": "crazyi",
+    "url": "https://github.com/crazyi"
+  },
+  "homepage": "https://github.com/crazyi/codex-session-delete",
+  "repository": "https://github.com/crazyi/codex-session-delete",
+  "license": "MIT",
+  "keywords": ["codex", "session", "cleanup", "maintenance", "backup"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Session Delete",
+    "shortDescription": "Delete Codex sessions with undoable backups.",
+    "longDescription": "Delete a Codex session and generate an undoable backup. Also supports restore, listing, and bulk-delete by project.",
+    "developerName": "crazyi",
+    "category": "Productivity",
+    "capabilities": ["Execute"],
+    "defaultPrompt": "Help me delete a Codex session safely with an undoable backup."
+  }
+}

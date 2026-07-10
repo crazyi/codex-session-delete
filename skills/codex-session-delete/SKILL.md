@@ -1,10 +1,15 @@
+---
+name: codex-session-delete
+description: 删除一个 Codex 会话，并生成可撤销备份。也支持恢复、查看备份和按项目批量删除。当用户要求删除会话、或明确要求使用 codex-session-delete 时使用。
+---
+
 # codex-session-delete
 
-删除一个 Codex 会话，并生成可撤销备份。也支持恢复和查看备份。
+删除一个 Codex 会话，并生成可撤销备份。也支持恢复、查看备份和按项目批量删除。
 
 ## 何时使用
 
-用户要求删除会话，或明确要求使用 `codex-session-delete`。
+用户要求删除会话、或明确要求使用 `codex-session-delete` 时使用本 skill。
 
 ## 输入
 
@@ -13,6 +18,7 @@
 ## 流程
 
 > 路径中的 `$CODEX_HOME` 未设置时回退到 `~/.codex`。
+> 本 skill 通过 Codex 插件安装时，脚本会暴露在上述标准路径下，直接执行即可。
 
 1. 查看备份：`python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" list`。
 2. 删除会话：`python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" delete "<session_id>"`。
