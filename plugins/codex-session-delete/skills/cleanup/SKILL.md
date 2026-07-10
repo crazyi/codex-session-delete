@@ -1,9 +1,9 @@
 ---
-name: codex-session-delete
-description: 删除一个 Codex 会话，并生成可撤销备份。也支持恢复、查看备份和按项目批量删除。当用户要求删除会话、或明确要求使用 codex-session-delete 时使用。
+name: cleanup
+description: 删除一个 Codex 会话，并生成可撤销备份。也支持恢复、查看备份和按项目批量删除。当用户要求删除会话、或明确要求使用 cleanup 时使用。
 ---
 
-# codex-session-delete
+# cleanup
 
 删除一个 Codex 会话，并生成可撤销备份。也支持恢复、查看备份和按项目批量删除。
 
