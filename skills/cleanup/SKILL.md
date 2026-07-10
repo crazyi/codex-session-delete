@@ -30,3 +30,56 @@ description: 删除一个 Codex 会话，并生成可撤销备份。也支持恢
 - 目标会话不再出现在 `~/.codex/sqlite/state_5.sqlite` 的 `threads` 表。
 - 对应 rollout 文件被删除。
 - 存在备份文件。
+
+## 按归档状态批量删除
+
+`bulk-delete` 子命令只按 `cwd` / `rollout_path` 的子串匹配，没法直接表达"未归档"或"无项目"。用 sqlite 取出 ID 后循环 `delete` 即可，每条都会在 `~/.codex-session-delete/backups/` 留一份可 `restore` 的 JSON 备份。
+
+### 只删未归档（`archived = 0`）
+
+```bash
+cd <插件目录>
+DB="$HOME/.codex/state_5.sqlite"
+
+# 预览
+sqlite3 -header -column "$DB" \
+  "SELECT id, substr(cwd,1,50) AS cwd, substr(title,1,40) AS title
+   FROM threads WHERE archived = 0 ORDER BY updated_at_ms DESC;"
+
+# 逐条删除
+for sid in $(sqlite3 "$DB" "SELECT id FROM threads WHERE archived = 0"); do
+  python3 scripts/codex-session-delete delete "$sid"
+done
+```
+
+### Codex 侧栏"任务"分组（未归档 + 无项目）
+
+Codex 桌面侧栏的 **"任务"分组** 就是 `git_branch` 和 `git_origin_url` 都为空的会话。删这一组：
+
+```bash
+cd <插件目录>
+DB="$HOME/.codex/state_5.sqlite"
+
+# 预览
+sqlite3 -header -column "$DB" \
+  "SELECT id, substr(cwd,1,50) AS cwd, substr(title,1,40) AS title
+   FROM threads
+   WHERE archived = 0
+     AND (git_branch IS NULL OR TRIM(git_branch) = '')
+     AND (git_origin_url IS NULL OR TRIM(git_origin_url) = '')
+   ORDER BY updated_at_ms DESC;"
+
+# 逐条删除
+for sid in $(sqlite3 "$DB" "SELECT id FROM threads
+   WHERE archived = 0
+     AND (git_branch IS NULL OR TRIM(git_branch) = '')
+     AND (git_origin_url IS NULL OR TRIM(git_origin_url) = '')"); do
+  python3 scripts/codex-session-delete delete "$sid"
+done
+```
+
+判定规则：
+
+- `archived = 0` 未归档；`archived = 1` 已归档
+- `git_branch` 和 `git_origin_url` 都为空 → 无项目会话（侧栏"任务"分组）
+- 想只保留其中一个条件，去掉对应 WHERE 子句即可
