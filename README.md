@@ -10,8 +10,10 @@
 
 ## 快速开始
 
+> `$CODEX_HOME` 未设置时回退到 `~/.codex`，假设 skill 安装在标准位置。
+
 ```bash
-python3 skills/codex-session-delete/scripts/codex-session-delete --help
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" --help
 ```
 
 ## 常用命令
@@ -19,50 +21,50 @@ python3 skills/codex-session-delete/scripts/codex-session-delete --help
 ### 1. 验证会话是否存在
 
 ```bash
-python3 skills/codex-session-delete/scripts/codex-session-delete verify <session_id>
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" verify <session_id>
 ```
 
 ### 2. 删除会话
 
 ```bash
-python3 skills/codex-session-delete/scripts/codex-session-delete delete <session_id>
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" delete <session_id>
 ```
 
 ### 3. 查看备份列表
 
 ```bash
-python3 skills/codex-session-delete/scripts/codex-session-delete list
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" list
 ```
 
 ### 4. 撤销删除
 
 ```bash
-python3 skills/codex-session-delete/scripts/codex-session-delete undo <undo_token>
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" undo <undo_token>
 ```
 
 或直接恢复：
 
 ```bash
-python3 skills/codex-session-delete/scripts/codex-session-delete restore <backup_path>
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" restore <backup_path>
 ```
 
 ### 5. 批量删除项目会话
 
 ```bash
 # 预览项目相关会话
-python3 skills/codex-session-delete/scripts/codex-session-delete bulk-delete "<project>" --dry-run
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" bulk-delete "<project>" --dry-run
 
 # 执行删除
-python3 skills/codex-session-delete/scripts/codex-session-delete bulk-delete "<project>"
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" bulk-delete "<project>"
 
 # 跳过指定会话
-python3 skills/codex-session-delete/scripts/codex-session-delete bulk-delete "<project>" --skip <session_id>
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" bulk-delete "<project>" --skip <session_id>
 ```
 
 ## 自定义备份目录
 
 ```bash
-python3 skills/codex-session-delete/scripts/codex-session-delete \
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" \
   delete <session_id> --backup-dir /tmp/my-backups
 ```
 

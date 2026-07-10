@@ -12,11 +12,13 @@
 
 ## 流程
 
-1. 查看备份：`python3 skills/codex-session-delete/scripts/codex-session-delete list`。
-2. 删除会话：`python3 skills/codex-session-delete/scripts/codex-session-delete delete "<session_id>"`。
+> 路径中的 `$CODEX_HOME` 未设置时回退到 `~/.codex`。
+
+1. 查看备份：`python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" list`。
+2. 删除会话：`python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" delete "<session_id>"`。
 3. 读取输出，确认 `session_id`、`undo_token`、`backup_path`。
 4. 如失败，检查脚本输出；失败时脚本不会修改数据。
-5. 恢复会话：`python3 skills/codex-session-delete/scripts/codex-session-delete restore "<backup_path>"`。
+5. 恢复会话：`python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" restore "<backup_path>"`。
 
 ## 成功标准
 
