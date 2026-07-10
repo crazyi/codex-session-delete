@@ -12,32 +12,23 @@
 
 ### 方式 1：通过 Codex marketplace 安装（推荐）
 
-本仓库本身是一个 Codex 插件，可通过个人 marketplace 安装：
+本仓库本身是一个 Codex 插件，可通过个人 marketplace 安装。
+
+#### 一次性配置
 
 ```bash
-# 1. 把本仓库 clone 到本地（路径可自定义，本文档以 ~/Desktop/1111/codex-session-delete 为例）
+# 1. clone 仓库（路径可自定义）
 git clone https://github.com/crazyi/codex-session-delete.git ~/Desktop/1111/codex-session-delete
 
-# 2. 把 marketplace 入口写到默认位置（首次安装时执行一次即可）
+# 2. 在 ~/plugins/ 下放一个软链接，指向仓库（开发时改仓库内容，插件实时生效）
+mkdir -p ~/plugins
+ln -sfn ~/Desktop/1111/codex-session-delete ~/plugins/codex-session-delete
+
+# 3. 写个人 marketplace 入口（首次安装时执行一次）
 mkdir -p ~/.agents/plugins
-# 写入 marketplace.json，详见后文「marketplace.json 示例」
-
-# 3. 安装插件
-codex plugin add codex-session-delete@personal
 ```
 
-`personal` 是默认 marketplace 名称，由 `~/.agents/plugins/marketplace.json` 隐式发现，不需要额外 `codex plugin marketplace add`。
-
-安装后启动一个新会话，Codex 就会识别 `codex-session-delete` skill。
-
-### 方式 2：手动安装为个人 skill
-
-```bash
-git clone https://github.com/crazyi/codex-session-delete.git \
-  "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete"
-```
-
-## marketplace.json 示例
+`~/.agents/plugins/marketplace.json`：
 
 ```json
 {
@@ -50,7 +41,7 @@ git clone https://github.com/crazyi/codex-session-delete.git \
       "name": "codex-session-delete",
       "source": {
         "source": "local",
-        "path": "/Users/crazyi/Desktop/1111/codex-session-delete"
+        "path": "./plugins/codex-session-delete"
       },
       "policy": {
         "installation": "AVAILABLE",
@@ -62,15 +53,34 @@ git clone https://github.com/crazyi/codex-session-delete.git \
 }
 ```
 
-> `source.path` 必须指向本仓库的绝对路径。如果仓库移动，需要同步更新此处。
+> `source.path` 是**相对个人 marketplace 根（`$HOME`）的路径**，必须以 `./` 开头。Codex 运行时只接受相对路径，硬写绝对路径会报 "plugin not found"。
+> 软链接让仓库位置变化时，marketplace 入口无需修改。
+
+#### 安装与升级
+
+```bash
+# 安装
+codex plugin add codex-session-delete@personal
+
+# 升级（每次改了代码后，让 Codex 重新读取）
+codex plugin upgrade codex-session-delete@personal
+```
+
+`personal` 是默认 marketplace 名称，由 `~/.agents/plugins/marketplace.json` 隐式发现，不需要额外 `codex plugin marketplace add`。
+
+### 方式 2：手动安装为个人 skill（不推荐，无法跟随 marketplace 升级）
+
+```bash
+git clone https://github.com/crazyi/codex-session-delete.git \
+  "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete"
+```
 
 ## 快速开始
 
-> `$CODEX_HOME` 未设置时回退到 `~/.codex`，假设 skill 安装在标准位置。
-> 插件安装与手动安装都会让脚本暴露在 `~/.codex/skills/codex-session-delete/scripts/codex-session-delete`。
+> 插件安装后，skill 内的命令以相对路径 `python3 scripts/codex-session-delete ...` 形式给出，Codex 会从插件根目录解析。
 
 ```bash
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" --help
+python3 scripts/codex-session-delete --help
 ```
 
 ## 常用命令
@@ -78,50 +88,50 @@ python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-s
 ### 1. 验证会话是否存在
 
 ```bash
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" verify <session_id>
+python3 scripts/codex-session-delete verify <session_id>
 ```
 
 ### 2. 删除会话
 
 ```bash
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" delete <session_id>
+python3 scripts/codex-session-delete delete <session_id>
 ```
 
 ### 3. 查看备份列表
 
 ```bash
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" list
+python3 scripts/codex-session-delete list
 ```
 
 ### 4. 撤销删除
 
 ```bash
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" undo <undo_token>
+python3 scripts/codex-session-delete undo <undo_token>
 ```
 
 或直接恢复：
 
 ```bash
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" restore <backup_path>
+python3 scripts/codex-session-delete restore <backup_path>
 ```
 
 ### 5. 批量删除项目会话
 
 ```bash
 # 预览项目相关会话
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" bulk-delete "<project>" --dry-run
+python3 scripts/codex-session-delete bulk-delete "<project>" --dry-run
 
 # 执行删除
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" bulk-delete "<project>"
+python3 scripts/codex-session-delete bulk-delete "<project>"
 
 # 跳过指定会话
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" bulk-delete "<project>" --skip <session_id>
+python3 scripts/codex-session-delete bulk-delete "<project>" --skip <session_id>
 ```
 
 ## 自定义备份目录
 
 ```bash
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/codex-session-delete/scripts/codex-session-delete" \
+python3 scripts/codex-session-delete \
   delete <session_id> --backup-dir /tmp/my-backups
 ```
 
