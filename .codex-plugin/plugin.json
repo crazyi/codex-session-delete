@@ -1,6 +1,6 @@
 {
   "name": "codex-session-delete",
-  "version": "0.1.0+codex.20260710033135",
+  "version": "0.1.1",
   "description": "Delete Codex sessions with undoable backups, restore, list, and bulk-delete by project.",
   "author": {
     "name": "crazyi",
