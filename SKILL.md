@@ -1,3 +1,10 @@
+---
+name: codex-session-delete
+description: Delete a Codex session with a restorable backup, or restore/list existing backups. Use when a user asks to delete a Codex session, undo a session deletion, or check what sessions have been backed up.
+metadata:
+  short-description: Delete Codex sessions with restorable backups
+---
+
 # codex-session-delete
 
 删除一个 Codex 会话，并生成可撤销备份。也支持恢复和查看备份。
